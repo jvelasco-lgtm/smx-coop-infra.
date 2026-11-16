@@ -1,0 +1,4 @@
+<network>
+  <name>vlan10-mgmt</name>
+  <bridge name='virbr10' stp='on' delay='0'/>
+</network>

@@ -1,0 +1,4 @@
+<network>
+  <name>vlan20-lan</name>
+  <bridge name='virbr20' stp='on' delay='0'/>
+</network>
