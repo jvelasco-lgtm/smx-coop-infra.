@@ -1,0 +1,101 @@
+#cloud-config
+users:
+  - name: admincoop
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: 'smxcoop2026'
+
+ssh_pwauth: true
+
+package_update: true
+packages:
+  - nginx
+  - php-fpm
+  - ufw
+
+write_files:
+  - path: /etc/nginx/sites-available/smx-coop
+    content: |
+      server {
+          listen 80 default_server;
+          server_name www.smx.coop web.smx.coop _;
+          root /var/www/smx-coop;
+          index index.php index.html;
+
+          location / {
+              try_files $uri $uri/ =404;
+          }
+
+          location ~ \.php$ {
+              include snippets/fastcgi-php.conf;
+              fastcgi_pass unix:/run/php/php-fpm.sock;
+          }
+      }
+
+  - path: /var/www/smx-coop/index.php
+    content: |
+      <?php
+      $enviado = false;
+      if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+          $nombre = htmlspecialchars($_POST['nombre'] ?? '');
+          $email = htmlspecialchars($_POST['email'] ?? '');
+          $mensaje = htmlspecialchars($_POST['mensaje'] ?? '');
+          if ($nombre && $email && $mensaje) {
+              $linea = date('Y-m-d H:i:s') . " | $nombre <$email>: $mensaje\n";
+              file_put_contents('/var/www/smx-coop/consultas.log', $linea, FILE_APPEND);
+              $enviado = true;
+          }
+      }
+      ?>
+      <!DOCTYPE html>
+      <html lang="ca">
+      <head>
+        <meta charset="UTF-8">
+        <title>SMX-Coop | Portal Corporatiu (DMZ)</title>
+        <style>
+          body { font-family: system-ui, sans-serif; max-width: 720px; margin: 3rem auto; padding: 0 1rem; color: #1e293b; background: #f8fafc; }
+          header { background: #0f172a; color: white; padding: 1.5rem; border-radius: 10px; }
+          .card { background: white; padding: 1.5rem; margin-top: 1.5rem; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          input, textarea { width: 100%; padding: 0.6rem; margin: 0.4rem 0 1rem; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+          button { background: #2563eb; color: white; border: none; padding: 0.7rem 1.4rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+          .ok { background: #dcfce7; color: #166534; padding: 0.8rem; border-radius: 6px; margin-bottom: 1rem; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <h1>SMX-Coop — Serveis Digitals Cooperatius</h1>
+          <p>Allotjat a la VLAN 30 (DMZ) · Servidor: <?php echo gethostname(); ?> (192.168.30.10)</p>
+        </header>
+        <div class="card">
+          <h2>Contacte i Suport</h2>
+          <?php if ($enviado): ?>
+            <div class="ok">Consulta registrada correctament. El nostre equip et respondrà aviat.</div>
+          <?php endif; ?>
+          <form method="POST">
+            <label>Nom complet</label>
+            <input type="text" name="nombre" required placeholder="Ex: Maria Garcia">
+            <label>Correu electrònic</label>
+            <input type="email" name="email" required placeholder="usuari@exemple.cat">
+            <label>Missatge</label>
+            <textarea name="mensaje" rows="4" required placeholder="Escriu la teva consulta..."></textarea>
+            <button type="submit">Enviar consulta</button>
+          </form>
+        </div>
+      </body>
+      </html>
+
+runcmd:
+  - echo "127.0.1.1 vm3-web.smx.coop vm3-web" >> /etc/hosts
+  - mkdir -p /var/www/smx-coop
+  - touch /var/www/smx-coop/consultas.log
+  - chown -R www-data:www-data /var/www/smx-coop
+  - rm -f /etc/nginx/sites-enabled/default
+  - ln -sf /etc/nginx/sites-available/smx-coop /etc/nginx/sites-enabled/smx-coop
+  - systemctl enable --now nginx
+  - systemctl restart php8.3-fpm || systemctl restart php*-fpm
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
