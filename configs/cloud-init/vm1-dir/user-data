@@ -1,0 +1,54 @@
+#cloud-config
+users:
+  - name: admincoop
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: 'smxcoop2026'
+
+ssh_pwauth: true
+
+package_update: true
+packages:
+  - dnsmasq
+  - ldap-utils
+  - ufw
+
+write_files:
+  - path: /etc/dnsmasq.d/smx-coop.conf
+    content: |
+      # Dominio interno SMX-Coop
+      domain-needed
+      bogus-priv
+      local=/smx.coop/
+      domain=smx.coop
+      expand-hosts
+
+      # Registros DNS internos estáticos
+      address=/gw.smx.coop/192.168.10.1
+      address=/dir.smx.coop/192.168.10.10
+      address=/ldap.smx.coop/192.168.10.10
+      address=/monit.smx.coop/192.168.10.20
+      address=/www.smx.coop/192.168.30.10
+      address=/web.smx.coop/192.168.30.10
+
+      # Servidores DNS externos
+      server=1.1.1.1
+      server=8.8.8.8
+
+      # Rangos DHCP (mediante DHCP Relay desde el router)
+      dhcp-range=tag:vlan20,192.168.20.100,192.168.20.200,255.255.255.0,12h
+      dhcp-option=tag:vlan20,3,192.168.20.1
+      dhcp-option=tag:vlan20,6,192.168.10.10
+
+      dhcp-range=tag:vlan40,192.168.40.100,192.168.40.200,255.255.255.0,4h
+      dhcp-option=tag:vlan40,3,192.168.40.1
+      dhcp-option=tag:vlan40,6,192.168.10.10
+
+runcmd:
+  - systemctl disable --now systemd-resolved
+  - rm -f /etc/resolv.conf
+  - echo "nameserver 127.0.0.1" > /etc/resolv.conf
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y slapd
+  - systemctl enable --now dnsmasq slapd
