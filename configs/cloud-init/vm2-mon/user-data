@@ -1,0 +1,66 @@
+#cloud-config
+users:
+  - name: admincoop
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    lock_passwd: false
+    plain_text_passwd: 'smxcoop2026'
+
+ssh_pwauth: true
+
+package_update: true
+packages:
+  - borgbackup
+  - prometheus
+  - prometheus-node-exporter
+  - ldap-utils
+  - curl
+  - ufw
+
+write_files:
+  - path: /etc/prometheus/prometheus.yml
+    content: |
+      global:
+        scrape_interval: 15s
+
+      scrape_configs:
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+        - job_name: 'vm2-mon-node'
+          static_configs:
+            - targets: ['localhost:9100']
+
+  - path: /usr/local/bin/check-smxcoop.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      echo "=== ESTAT INFRAESTRUCTURA SMX-COOP ($(date)) ==="
+      for host in 192.168.10.1 192.168.10.10 192.168.10.20 192.168.30.10; do
+        if ping -c 1 -W 1 $host >/dev/null 2>&1; then
+          echo "[OK] Ping $host"
+        else
+          echo "[FAIL] Ping $host"
+        fi
+      done
+      if curl -sI http://www.smx.coop | grep -q "200 OK"; then
+        echo "[OK] Web corporativa DMZ (www.smx.coop)"
+      else
+        echo "[FAIL] Web corporativa DMZ (www.smx.coop)"
+      fi
+      if ldapsearch -x -H ldap://192.168.10.10 -b "dc=smx,dc=coop" "(uid=jvelasco)" dn >/dev/null 2>&1; then
+        echo "[OK] Directori OpenLDAP (dir.smx.coop)"
+      else
+        echo "[FAIL] Directori OpenLDAP (dir.smx.coop)"
+      fi
+
+runcmd:
+  - echo "127.0.1.1 vm2-mon.smx.coop vm2-mon" >> /etc/hosts
+  - mkdir -p /srv/backups
+  - chown admincoop:admincoop /srv/backups
+  - systemctl enable --now prometheus prometheus-node-exporter
+  - ufw allow 22/tcp
+  - ufw allow 9090/tcp
+  - ufw allow 9100/tcp
+  - ufw --force enable
